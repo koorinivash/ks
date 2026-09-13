@@ -22,6 +22,11 @@
     "web": {
       "favicon": "./assets/ks-icon.png"
     },
-    "plugins": []
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "0110f8ba-e337-4d67-afb5-0f3e7b602bd0"
+      }
+    }
   }
 }
