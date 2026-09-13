@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,23 +33,27 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const load = useCallback(
     async (isRefresh = false) => {
+      const id = ++requestId.current;
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        const [dashboardData, people] = await Promise.all([
-          fetchDashboard(month, year),
-          fetchPeople(),
-        ]);
+        const dashboardData = await fetchDashboard(month, year);
+        // Compatibility with older backend versions during a rolling deployment.
+        const hasPeople = dashboardData.has_any_people ?? (await fetchPeople({ limit: 1 })).length > 0;
+        if (id !== requestId.current) return;
         setSummary(dashboardData);
-        setHasAnyPeople(people.length > 0);
+        setHasAnyPeople(hasPeople);
       } catch (err) {
-        setError(getFriendlyErrorMessage(err));
+        if (id === requestId.current) setError(getFriendlyErrorMessage(err));
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (id === requestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [month, year]
@@ -58,6 +62,7 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      return () => { requestId.current += 1; };
     }, [load])
   );
 

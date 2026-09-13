@@ -1,0 +1,27 @@
+{
+  "mode": "remote HTTP, read-only",
+  "endpoints": {
+    "/health": {
+      "error": "ReadTimeout"
+    },
+    "/api/people": {
+      "first_ms": 13068.07,
+      "warm_median_ms": 11265.15,
+      "bytes": 8685
+    },
+    "/api/dashboard?month=9&year=2026": {
+      "first_ms": 757.1,
+      "warm_median_ms": 750.64,
+      "bytes": 141
+    },
+    "/api/monthly-records?month=9&year=2026": {
+      "first_ms": 818.54,
+      "warm_median_ms": 727.97,
+      "bytes": 304
+    },
+    "/api/people/{id}": {
+      "first_ms": 747.46,
+      "warm_median_ms": 720.7
+    }
+  }
+}

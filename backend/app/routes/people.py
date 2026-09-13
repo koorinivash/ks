@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+import re
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel
 
 from app.database.mongodb import get_database
 from app.models.person import new_person_document, person_doc_to_response
@@ -11,6 +13,11 @@ from app.services import finance_service
 from app.utils.object_id import is_valid_object_id
 
 router = APIRouter(prefix="/api/people", tags=["people"])
+
+
+class PersonOption(BaseModel):
+    id: str
+    name: str
 
 
 def _validate_object_id(person_id: str) -> ObjectId:
@@ -39,6 +46,8 @@ async def list_people(
     status: str | None = Query(default=None),
     month: int | None = Query(default=None, ge=1, le=12),
     year: int | None = Query(default=None, ge=2000, le=2100),
+    page: int | None = Query(default=None, ge=1),
+    limit: int | None = Query(default=None, ge=1, le=100),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
     query: dict = {}
@@ -46,23 +55,27 @@ async def list_people(
         query["status"] = status
     if search:
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": re.escape(search), "$options": "i"}},
+            {"phone": {"$regex": re.escape(search), "$options": "i"}},
         ]
 
-    people = await db["people"].find(query).sort("name", 1).to_list(length=None)
+    cursor = db["people"].find(query).sort([("name", 1), ("_id", 1)])
+    if page is not None or limit is not None:
+        page_size = limit or 20
+        cursor = cursor.skip(((page or 1) - 1) * page_size).limit(page_size)
+    people = await cursor.to_list(length=None)
 
     now = datetime.now(timezone.utc)
     target_month = month or now.month
     target_year = year or now.year
+    stats_by_person = await finance_service.get_people_stats(
+        db, [p["_id"] for p in people], target_month, target_year
+    )
 
     results = []
     for person in people:
         base = person_doc_to_response(person)
-        stats = await finance_service.get_person_stats(db, str(person["_id"]))
-        current_record = await db["monthly_records"].find_one(
-            {"person_id": person["_id"], "month": target_month, "year": target_year}
-        )
+        stats = stats_by_person.get(person["_id"], finance_service.empty_person_stats())
         results.append(
             PersonWithStats(
                 **base,
@@ -70,11 +83,19 @@ async def list_people(
                 paid_months=stats["paid_months"],
                 pending_months=stats["pending_months"],
                 last_payment_date=stats["last_payment_date"],
-                current_month_status=current_record.get("status") if current_record else "pending",
-                current_month_paid=current_record.get("paid_amount", 0) if current_record else 0,
+                current_month_status=stats["current_month_status"],
+                current_month_paid=stats["current_month_paid"],
             )
         )
     return results
+
+
+@router.get("/options", response_model=list[PersonOption])
+async def list_person_options(db: AsyncIOMotorDatabase = Depends(get_database)):
+    people = await db["people"].find({"status": "active"}, {"name": 1}).sort(
+        [("name", 1), ("_id", 1)]
+    ).to_list(length=None)
+    return [{"id": str(person["_id"]), "name": person["name"]} for person in people]
 
 
 @router.get("/{person_id}", response_model=PersonWithStats)

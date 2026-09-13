@@ -1,0 +1,10 @@
+{
+  "mode": "read-only live Atlas explain before index deployment, from development computer",
+  "connect_and_ping_ms": 906.6,
+  "warm_ping_ms": 53.85,
+  "queries": [
+    {"collection": "people", "filter_fields": ["status"], "indexes": [], "executionTimeMillis": 0, "totalDocsExamined": 23, "totalKeysExamined": 0, "nReturned": 23},
+    {"collection": "monthly_records", "filter_fields": ["year", "month"], "indexes": ["year_1"], "executionTimeMillis": 0, "totalDocsExamined": 1, "totalKeysExamined": 1, "nReturned": 1},
+    {"collection": "monthly_records", "filter_fields": ["person_id"], "indexes": ["person_id_1_year_1_month_1"], "executionTimeMillis": 1, "totalDocsExamined": 1, "totalKeysExamined": 1, "nReturned": 1}
+  ]
+}

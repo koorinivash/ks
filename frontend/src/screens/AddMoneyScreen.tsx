@@ -6,18 +6,20 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button, HelperText, Menu, Snackbar, TextInput } from 'react-native-paper';
 
 import LoadingView from '../components/LoadingView';
+import ErrorView from '../components/ErrorView';
 import { RootStackParamList } from '../navigation/types';
 import {
   createMonthlyRecord,
   fetchMonthlyRecord,
   fetchMonthlyRecords,
-  fetchPeople,
+  fetchPersonOptions,
   getFriendlyErrorMessage,
   updateMonthlyRecord,
 } from '../services/api';
 import { colors } from '../theme/colors';
 import { spacing } from '../theme/spacing';
-import { MonthlyRecord, PersonWithStats } from '../types';
+import { MonthlyRecord, PersonOption } from '../types';
+import { formatDate, formatMonthYear } from '../utils/format';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'AddMoney'>;
 type Rt = RouteProp<RootStackParamList, 'AddMoney'>;
@@ -30,14 +32,20 @@ export default function AddMoneyScreen() {
 
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [checkingExisting, setCheckingExisting] = useState(false);
-  const [people, setPeople] = useState<PersonWithStats[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [people, setPeople] = useState<PersonOption[]>([]);
   const [personId, setPersonId] = useState<string | undefined>(params.personId);
   const [personMenuVisible, setPersonMenuVisible] = useState(false);
 
-  const paymentDate = useMemo(() => {
-    if (params.year && params.month) return new Date(params.year, params.month - 1, 1);
-    return new Date();
-  }, [params.year, params.month]);
+  const [today] = useState(() => {
+    const now = new Date();
+    // Store the local calendar day explicitly; converting local midnight to UTC can change it.
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T12:00:00.000Z`;
+  });
+  const [paymentDate, setPaymentDate] = useState<string | null>(today);
+  const [month, setMonth] = useState(params.month ?? Number(today.slice(5, 7)));
+  const [year, setYear] = useState(params.year ?? Number(today.slice(0, 4)));
 
   const [paidAmount, setPaidAmount] = useState('');
   const [existingRecordId, setExistingRecordId] = useState<string | undefined>(params.recordId);
@@ -50,28 +58,38 @@ export default function AddMoneyScreen() {
   const selectedPerson = useMemo(() => people.find((p) => p.id === personId), [people, personId]);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadingInitial(true);
+    setLoadError(null);
     (async () => {
       try {
-        const peopleData = await fetchPeople({ status: 'active' });
+        const [peopleData, record] = await Promise.all([
+          fetchPersonOptions(),
+          params.recordId ? fetchMonthlyRecord(params.recordId) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
         setPeople(peopleData);
 
-        if (params.recordId) {
-          const record = await fetchMonthlyRecord(params.recordId);
+        if (record) {
           applyRecord(record);
         }
       } catch (err) {
-        setSnackbar(getFriendlyErrorMessage(err));
+        if (!cancelled) setLoadError(getFriendlyErrorMessage(err));
       } finally {
-        setLoadingInitial(false);
+        if (!cancelled) setLoadingInitial(false);
       }
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [params.recordId, loadAttempt]);
 
   function applyRecord(record: MonthlyRecord) {
     setExistingRecordId(record.id);
     setPersonId(record.person_id);
     setPaidAmount(String(record.paid_amount));
+    setMonth(record.month);
+    setYear(record.year);
+    setPaymentDate(record.payment_date);
   }
 
   // When (re)selecting a person, look up whether a record already exists for
@@ -80,8 +98,10 @@ export default function AddMoneyScreen() {
     if (params.recordId || !personId) return;
     let cancelled = false;
     setCheckingExisting(true);
-    const month = paymentDate.getMonth() + 1;
-    const year = paymentDate.getFullYear();
+    setLoadError(null);
+    setExistingRecordId(undefined);
+    setPaidAmount('');
+    setPaymentDate(today);
     (async () => {
       try {
         const records = await fetchMonthlyRecords({ person_id: personId, month, year });
@@ -89,11 +109,13 @@ export default function AddMoneyScreen() {
         if (records.length > 0) {
           setExistingRecordId(records[0].id);
           setPaidAmount(String(records[0].paid_amount));
+          setPaymentDate(records[0].payment_date);
         } else {
           setExistingRecordId(undefined);
+          setPaymentDate(today);
         }
-      } catch {
-        // Non-fatal: worst case, saving may hit a duplicate-record error which is shown to the user.
+      } catch (err) {
+        if (!cancelled) setLoadError(getFriendlyErrorMessage(err));
       } finally {
         if (!cancelled) setCheckingExisting(false);
       }
@@ -102,9 +124,15 @@ export default function AddMoneyScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [personId, params.recordId]);
+  }, [personId, params.recordId, month, year, today, loadAttempt]);
 
-  const handleSelectPerson = (person: PersonWithStats) => {
+  const handleSelectPerson = (person: PersonOption) => {
+    if (person.id !== personId) {
+      setCheckingExisting(true);
+      setExistingRecordId(undefined);
+      setPaidAmount('');
+      setPaymentDate(today);
+    }
     setPersonId(person.id);
     setPersonMenuVisible(false);
     setPersonError('');
@@ -119,7 +147,7 @@ export default function AddMoneyScreen() {
       setPersonError('');
     }
     const paid = Number(paidAmount);
-    if (paidAmount.trim() === '' || Number.isNaN(paid) || paid < 0) {
+    if (paidAmount.trim() === '' || !Number.isFinite(paid) || paid < 0) {
       setAmountError('Enter a valid amount (0 or more)');
       valid = false;
     } else {
@@ -129,17 +157,18 @@ export default function AddMoneyScreen() {
   };
 
   const handleSubmit = async () => {
+    if (loadingInitial || checkingExisting || loadError || submitting) return;
     if (!validate() || !personId) return;
     setSubmitting(true);
     try {
       const paid = Number(paidAmount) || 0;
       const payload = {
         person_id: personId,
-        month: paymentDate.getMonth() + 1,
-        year: paymentDate.getFullYear(),
+        month,
+        year,
         amount: paid,
         paid_amount: paid,
-        payment_date: paymentDate.toISOString(),
+        payment_date: paymentDate,
       };
       if (existingRecordId) {
         await updateMonthlyRecord(existingRecordId, payload);
@@ -155,13 +184,14 @@ export default function AddMoneyScreen() {
   };
 
   if (loadingInitial) return <LoadingView />;
+  if (loadError) return <ErrorView message={loadError} onRetry={() => setLoadAttempt((attempt) => attempt + 1)} />;
 
   return (
     <KeyboardAvoidingView style={styles.flex} keyboardVerticalOffset={headerHeight} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.title}>{existingRecordId ? 'Edit Payment' : 'Add Payment'}</Text>
 
-        {!params.personId && (
+        {!params.personId && !params.recordId && (
           <Field label="Person">
             <Menu
               visible={personMenuVisible}
@@ -172,6 +202,7 @@ export default function AddMoneyScreen() {
                   placeholder="Select Person"
                   value={selectedPerson?.name ?? ''}
                   editable={false}
+                  disabled={submitting}
                   onPressIn={() => setPersonMenuVisible(true)}
                   right={<TextInput.Icon icon="chevron-down" onPress={() => setPersonMenuVisible(true)} />}
                   error={Boolean(personError)}
@@ -196,11 +227,23 @@ export default function AddMoneyScreen() {
           </View>
         )}
 
+        <Field label="Payment Date">
+          <TextInput
+            mode="outlined"
+            value={formatDate(paymentDate)}
+            editable={false}
+            left={<TextInput.Icon icon="calendar" />}
+            outlineColor={colors.border}
+          />
+          <HelperText type="info">For {formatMonthYear(month, year)}</HelperText>
+        </Field>
+
         <Field label="Amount">
           <TextInput
             mode="outlined"
             placeholder="1000"
             value={paidAmount}
+            editable={!checkingExisting && !submitting}
             onChangeText={setPaidAmount}
             keyboardType="numeric"
             left={<TextInput.Affix text="₹" />}

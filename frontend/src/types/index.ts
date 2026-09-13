@@ -1,6 +1,11 @@
 export type PersonStatus = 'active' | 'inactive';
 export type RecordStatus = 'paid' | 'pending' | 'partial';
 
+export interface PersonOption {
+  id: string;
+  name: string;
+}
+
 export interface Person {
   id: string;
   name: string;
@@ -38,6 +43,7 @@ export interface MonthlyRecord {
 }
 
 export interface DashboardSummary {
+  has_any_people?: boolean;
   total_people: number;
   expected_amount: number;
   collected_amount: number;

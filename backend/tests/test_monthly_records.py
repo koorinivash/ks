@@ -115,3 +115,37 @@ async def test_create_payment_person_not_found(client):
         },
     )
     assert resp.status_code == 404
+
+
+async def test_payment_date_preserved_when_editing_amount(client):
+    person_id = await _create_person(client)
+    created = await client.post("/api/monthly-records", json={
+        "person_id": person_id, "month": 8, "year": 2026,
+        "amount": 1000, "paid_amount": 400,
+        "payment_date": "2026-09-13T12:00:00.000Z",
+    })
+    assert created.status_code == 201
+    record = created.json()
+    saved = await client.get(f"/api/monthly-records/{record['id']}")
+    assert saved.status_code == 200
+    updated = await client.put(
+        f"/api/monthly-records/{record['id']}", json={"paid_amount": 1000}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["payment_date"] == saved.json()["payment_date"]
+    assert updated.json()["payment_date"].startswith("2026-09-13")
+    assert updated.json()["month"] == 8
+
+
+async def test_last_payment_uses_payment_date_instead_of_billing_month(client):
+    person_id = await _create_person(client)
+    for month, payment_date in [(9, "2026-09-01"), (8, "2026-09-13")]:
+        response = await client.post("/api/monthly-records", json={
+            "person_id": person_id, "month": month, "year": 2026,
+            "amount": 1000, "paid_amount": 1000,
+            "payment_date": f"{payment_date}T12:00:00.000Z",
+        })
+        assert response.status_code == 201
+    person = await client.get(f"/api/people/{person_id}")
+    assert person.status_code == 200
+    assert person.json()["last_payment_date"].startswith("2026-09-13")

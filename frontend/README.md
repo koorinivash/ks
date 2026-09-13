@@ -27,6 +27,10 @@ On a physical device, `localhost` won't reach your computer — use your machine
 
 ## Run
 
+Deploy the updated backend before rebuilding the APK to enable server-side pagination and the single-request dashboard. `EXPO_PUBLIC_API_URL` is embedded at build time; the code falls back to the hosted Render URL in `src/constants/config.ts` when unset.
+
+Checks: `node --test tests/api.test.cjs` and `node node_modules/typescript/bin/tsc --noEmit`.
+
 ```bash
 npm start
 ```

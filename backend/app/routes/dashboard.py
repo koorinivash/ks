@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel
 
 from app.database.mongodb import get_database
 from app.services import finance_service
@@ -9,7 +10,18 @@ from app.services import finance_service
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
-@router.get("")
+class DashboardResponse(BaseModel):
+    total_people: int
+    expected_amount: float
+    collected_amount: float
+    pending_amount: float
+    collection_percentage: float
+    month: int
+    year: int
+    has_any_people: bool
+
+
+@router.get("", response_model=DashboardResponse)
 async def get_dashboard(
     month: int | None = Query(default=None, ge=1, le=12),
     year: int | None = Query(default=None, ge=2000, le=2100),

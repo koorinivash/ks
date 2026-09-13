@@ -20,7 +20,7 @@ def _validate_object_id(record_id: str, label: str = "record") -> ObjectId:
 
 
 async def _attach_person_name(db: AsyncIOMotorDatabase, doc: dict) -> dict:
-    person = await db["people"].find_one({"_id": doc["person_id"]})
+    person = await db["people"].find_one({"_id": doc["person_id"]}, {"name": 1})
     return record_doc_to_response(doc, person_name=person["name"] if person else None)
 
 
@@ -75,7 +75,7 @@ async def list_monthly_records(
         await db["monthly_records"].find(query).sort([("year", -1), ("month", -1)]).to_list(length=None)
     )
     people_ids = {r["person_id"] for r in records}
-    people = await db["people"].find({"_id": {"$in": list(people_ids)}}).to_list(length=None)
+    people = await db["people"].find({"_id": {"$in": list(people_ids)}}, {"name": 1}).to_list(length=None)
     names_by_id = {p["_id"]: p["name"] for p in people}
 
     return [record_doc_to_response(r, names_by_id.get(r["person_id"])) for r in records]

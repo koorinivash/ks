@@ -5,6 +5,7 @@ import {
   MonthlyRecord,
   MonthlyReport,
   Person,
+  PersonOption,
   PersonWithStats,
 } from '../types';
 
@@ -12,6 +13,30 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
+});
+
+// Share only pending reads. Completed financial responses are never cached.
+const pendingReads = new Map<string, Promise<{ data: unknown }>>();
+function sharedGet<T>(url: string, params?: object): Promise<{ data: T }> {
+  const key = JSON.stringify([url, Object.entries(params ?? {}).filter(([, value]) => value !== undefined).sort()]);
+  const pending = pendingReads.get(key);
+  if (pending) return pending as Promise<{ data: T }>;
+  const request = api.get<T>(url, { params }).finally(() => {
+    if (pendingReads.get(key) === request) pendingReads.delete(key);
+  });
+  pendingReads.set(key, request);
+  return request;
+}
+api.interceptors.request.use((config) => {
+  if (config.method && config.method !== 'get') pendingReads.clear();
+  return config;
+});
+api.interceptors.response.use((response) => {
+  if (response.config.method && response.config.method !== 'get') pendingReads.clear();
+  return response;
+}, (error) => {
+  if (error.config?.method && error.config.method !== 'get') pendingReads.clear();
+  return Promise.reject(error);
 });
 
 export class ApiError extends Error {
@@ -52,13 +77,20 @@ export async function fetchPeople(params?: {
   status?: string;
   month?: number;
   year?: number;
+  page?: number;
+  limit?: number;
 }): Promise<PersonWithStats[]> {
-  const { data } = await api.get<PersonWithStats[]>('/api/people', { params });
+  const { data } = await sharedGet<PersonWithStats[]>('/api/people', params);
   return data;
 }
 
 export async function fetchPerson(id: string): Promise<PersonWithStats> {
-  const { data } = await api.get<PersonWithStats>(`/api/people/${id}`);
+  const { data } = await sharedGet<PersonWithStats>(`/api/people/${id}`);
+  return data;
+}
+
+export async function fetchPersonOptions(): Promise<PersonOption[]> {
+  const { data } = await sharedGet<PersonOption[]>('/api/people/options');
   return data;
 }
 
@@ -95,12 +127,12 @@ export async function fetchMonthlyRecords(params?: {
   year?: number;
   status?: string;
 }): Promise<MonthlyRecord[]> {
-  const { data } = await api.get<MonthlyRecord[]>('/api/monthly-records', { params });
+  const { data } = await sharedGet<MonthlyRecord[]>('/api/monthly-records', params);
   return data;
 }
 
 export async function fetchMonthlyRecord(id: string): Promise<MonthlyRecord> {
-  const { data } = await api.get<MonthlyRecord>(`/api/monthly-records/${id}`);
+  const { data } = await sharedGet<MonthlyRecord>(`/api/monthly-records/${id}`);
   return data;
 }
 
@@ -124,12 +156,12 @@ export async function deleteMonthlyRecord(id: string): Promise<void> {
 // ---------- Dashboard & Reports ----------
 
 export async function fetchDashboard(month: number, year: number): Promise<DashboardSummary> {
-  const { data } = await api.get<DashboardSummary>('/api/dashboard', { params: { month, year } });
+  const { data } = await sharedGet<DashboardSummary>('/api/dashboard', { month, year });
   return data;
 }
 
 export async function fetchMonthlyReport(month: number, year: number): Promise<MonthlyReport> {
-  const { data } = await api.get<MonthlyReport>('/api/reports/monthly', { params: { month, year } });
+  const { data } = await sharedGet<MonthlyReport>('/api/reports/monthly', { month, year });
   return data;
 }
 

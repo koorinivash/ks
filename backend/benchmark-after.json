@@ -1,0 +1,29 @@
+{
+  "mode": "in-process ASGI + mongomock, 50 people / 600 records; no network or real indexes",
+  "endpoints": {
+    "/health": {
+      "first_ms": 12.87,
+      "warm_median_ms": 1.21,
+      "bytes": 34
+    },
+    "/api/people": {
+      "first_ms": 74.48,
+      "warm_median_ms": 67.33,
+      "bytes": 20451
+    },
+    "/api/dashboard?month=9&year=2026": {
+      "first_ms": 47.61,
+      "warm_median_ms": 46.76,
+      "bytes": 170
+    },
+    "/api/monthly-records?month=9&year=2026": {
+      "first_ms": 8.31,
+      "warm_median_ms": 7.99,
+      "bytes": 15701
+    },
+    "/api/people/{id}": {
+      "first_ms": 25.99,
+      "warm_median_ms": 25.84
+    }
+  }
+}

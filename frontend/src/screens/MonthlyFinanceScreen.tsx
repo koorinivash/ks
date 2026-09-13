@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,19 +26,24 @@ export default function MonthlyFinanceScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const load = useCallback(
     async (isRefresh = false) => {
+      const id = ++requestId.current;
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
         const data = await fetchMonthlyReport(month, year);
+        if (id !== requestId.current) return;
         setReport(data);
       } catch (err) {
-        setError(getFriendlyErrorMessage(err));
+        if (id === requestId.current) setError(getFriendlyErrorMessage(err));
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (id === requestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [month, year]
@@ -47,6 +52,7 @@ export default function MonthlyFinanceScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      return () => { requestId.current += 1; };
     }, [load])
   );
 

@@ -5,6 +5,16 @@ Interactive docs: `/docs` (Swagger UI) and `/redoc` (ReDoc) — generated automa
 
 All request/response bodies are JSON. There is no authentication.
 
+Performance additions (backward compatible):
+
+- `GET /api/people/options` returns the complete active-person picker as `[{"id": "...", "name": "..."}]`, without calculating history statistics or returning phone numbers and financial totals.
+
+- `GET /api/people?page=1&limit=20` returns a JSON array for that page. `page` starts at 1; `limit` is 1–100. Supplying `page` without `limit` uses 20. Omitting both preserves the complete list for existing clients. Ordering is by name, then ID. Search is a literal, case-insensitive substring of name or phone.
+- Dashboard responses additionally include `has_any_people`, which includes inactive people and removes the frontend's separate onboarding lookup. Existing totals still include active people only.
+- `GET /health` remains the existing lightweight liveness response (`service: "KS API"`). `GET /health/db` separately pings MongoDB and returns 503 when unavailable.
+- `Server-Timing: app;dur=...` reports application response preparation time in milliseconds, including database waits but excluding Render wake-up and network transfer. Large responses support gzip.
+- See [the performance report](../backend/PERFORMANCE.md) for benchmarks, indexes, deployment settings and limitations.
+
 ## Health
 
 | Method | Path | Description |
