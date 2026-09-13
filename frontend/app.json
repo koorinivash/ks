@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "KS",
+    "slug": "ks-finance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/ks-icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "ksfinance",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ksfinance.app"
+    },
+    "android": {
+      "package": "com.ksfinance.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#050505",
+        "foregroundImage": "./assets/ks-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/ks-icon.png"
+    },
+    "plugins": []
+  }
+}
